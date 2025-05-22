@@ -6,3 +6,5 @@ numpy
 pydantic
 langchain_community
 langchain_openai
+pypdf
+faiss-cpu==1.10.0

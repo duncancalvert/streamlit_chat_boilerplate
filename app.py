@@ -2,9 +2,14 @@ import os
 import streamlit as st
 from streamlit_chat import message
 import tempfile
+from dotenv import load_dotenv
 
+# Custom libs
 from utils import generate_response, reset_conversation
 from rag_system import RAGSystem
+
+load_dotenv()
+
 
 # Set page config
 st.set_page_config(
@@ -41,30 +46,47 @@ with st.sidebar:
     st.write("Upload documents to create a knowledge base for the chatbot.")
     
     uploaded_files = st.file_uploader(
-        "Upload PDF, TXT, or DOCX files", 
-        type=["pdf", "txt", "docx"], 
-        accept_multiple_files=True
+        "Upload PDF, TXT, DOCX, XLSX, or CSV files", 
+        type=["pdf", "txt", "docx", "xlsx", "csv"], 
+        accept_multiple_files=True,
+        key="file_uploader"
     )
+    
+    # Keep track of processed files to avoid re-processing
+    if "processed_files" not in st.session_state:
+        st.session_state.processed_files = set()
     
     if uploaded_files:
         with st.spinner("Processing documents..."):
-            for uploaded_file in uploaded_files:
-                # Save the uploaded file temporarily
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
-                
-                # Process the document
-                try:
-                    st.session_state.rag_system.add_document(tmp_path)
-                    st.session_state.document_uploaded = True
-                except Exception as e:
-                    st.error(f"Error processing {uploaded_file.name}: {str(e)}")
-                
-                # Clean up temp file
-                os.unlink(tmp_path)
+            newly_processed = False
             
-            if st.session_state.document_uploaded:
+            for uploaded_file in uploaded_files:
+                # Check if this file has already been processed (using name as identifier)
+                file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+                
+                if file_id not in st.session_state.processed_files:
+                    # Save the uploaded file temporarily
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        tmp_path = tmp_file.name
+                    
+                    # Process the document
+                    try:
+                        # Pass both the temporary path and the original filename
+                        st.session_state.rag_system.add_document(
+                            file_path=tmp_path, 
+                            original_filename=uploaded_file.name
+                        )
+                        st.session_state.document_uploaded = True
+                        st.session_state.processed_files.add(file_id)
+                        newly_processed = True
+                    except Exception as e:
+                        st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+                    
+                    # Clean up temp file
+                    os.unlink(tmp_path)
+            
+            if newly_processed:
                 st.success("Documents processed successfully!")
     
     st.header("Settings")
