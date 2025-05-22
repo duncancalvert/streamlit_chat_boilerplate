@@ -1,0 +1,8 @@
+streamlit
+langchain
+pandas
+streamlit-chat
+numpy
+pydantic
+langchain_community
+langchain_openai
