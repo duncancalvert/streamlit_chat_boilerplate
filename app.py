@@ -25,6 +25,8 @@ if "document_uploaded" not in st.session_state:
     st.session_state.document_uploaded = False
 if "api_key_error" not in st.session_state:
     st.session_state.api_key_error = False
+if "folder_loaded" not in st.session_state:
+    st.session_state.folder_loaded = False
     
 # Initialize RAG system
 if "rag_system" not in st.session_state:
@@ -32,6 +34,19 @@ if "rag_system" not in st.session_state:
         st.session_state.rag_system = RAGSystem()
         if os.getenv("OPENAI_API_KEY") is None:
             st.session_state.api_key_error = True
+            
+        # Check for default document folder on startup
+        default_docs_folder = os.getenv("DOCUMENTS_FOLDER")
+        if default_docs_folder and os.path.isdir(default_docs_folder) and not st.session_state.folder_loaded:
+            with st.spinner(f"Loading documents from {default_docs_folder}..."):
+                try:
+                    successful, total = st.session_state.rag_system.process_folder(default_docs_folder)
+                    if successful > 0:
+                        st.session_state.document_uploaded = True
+                        st.session_state.folder_loaded = True
+                        st.success(f"Successfully loaded {successful} documents from the default folder.")
+                except Exception as e:
+                    st.error(f"Error loading documents from default folder: {str(e)}")
     except Exception as e:
         st.error(f"Error initializing RAG system: {str(e)}")
         st.session_state.api_key_error = True
@@ -45,6 +60,23 @@ with st.sidebar:
     st.header("Document Upload")
     st.write("Upload documents to create a knowledge base for the chatbot.")
     
+    # Option to process files from a folder
+    folder_path = st.text_input("Enter folder path containing documents (optional)", key="folder_path")
+    
+    if folder_path and st.button("Process Folder"):
+        with st.spinner("Processing documents from folder..."):
+            try:
+                successful, total = st.session_state.rag_system.process_folder(folder_path)
+                if successful > 0:
+                    st.session_state.document_uploaded = True
+                    st.success(f"Successfully processed {successful} out of {total} files from the folder.")
+                else:
+                    st.warning(f"No compatible documents found in {folder_path}. Please check the path and try again.")
+            except Exception as e:
+                st.error(f"Error processing folder: {str(e)}")
+    
+    # Or upload individual files
+    st.markdown("### Or upload individual files")
     uploaded_files = st.file_uploader(
         "Upload PDF, TXT, DOCX, XLSX, or CSV files", 
         type=["pdf", "txt", "docx", "xlsx", "csv"], 

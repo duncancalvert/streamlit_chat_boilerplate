@@ -36,7 +36,7 @@ class RAGSystem:
                 # Initialize an empty vector store
                 self._initialize_empty_vector_store()
             except Exception as e:
-                print(f"Failed to initialize OpenAI embeddings: {str(e)}")
+                print(f"Failed to initialize embeddings: {str(e)}")
         else:
             print(
                 "No OpenAI API key found. Please set the OPENAI_API_KEY environment variable."
@@ -56,6 +56,38 @@ class RAGSystem:
         except Exception as e:
             print(f"Failed to initialize vector store: {str(e)}")
 
+    def process_folder(self, folder_path):
+        """
+        Process all supported documents in a folder and add them to the RAG system.
+        
+        Args:
+            folder_path (str): Path to the folder containing documents
+            
+        Returns:
+            tuple: (int, int) - (number of successfully processed files, total number of files attempted)
+        """
+        if not os.path.isdir(folder_path):
+            raise ValueError(f"The path '{folder_path}' is not a valid directory")
+        
+        supported_extensions = ['.pdf', '.txt', '.docx', '.csv', '.xlsx']
+        successful_files = 0
+        total_files = 0
+        
+        # Walk through the directory and process all supported files
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                file_ext = os.path.splitext(file)[1].lower()
+                if file_ext in supported_extensions:
+                    file_path = os.path.join(root, file)
+                    try:
+                        self.add_document(file_path)
+                        successful_files += 1
+                    except Exception as e:
+                        print(f"Error processing file {file}: {str(e)}")
+                    total_files += 1
+        
+        return successful_files, total_files
+    
     def add_document(self, file_path, original_filename=None):
         """
         Process a document and add it to the RAG system.
@@ -152,12 +184,13 @@ class RAGSystem:
             # do not change this unless explicitly requested by the user
             llm = ChatOpenAI(model="gpt-4o", temperature=temperature)
 
-            # Create an optimized retriever from the vector store
+            # Create an optimized retriever from the vector store with score threshold
             retriever = self.vector_store.as_retriever(
-                search_type="mmr",  # Maximum Marginal Relevance
+                search_type="similarity_score_threshold",  # Use similarity score threshold
                 search_kwargs={
-                    "k": 3,  # Reduced to 3 most relevant documents for faster retrieval
-                    "fetch_k": 5  # Fetch 5 documents first, then pick 3 most diverse
+                    "k": 3,  # Return up to 3 most relevant documents
+                    "score_threshold": 0.75,  # Only consider documents above this relevance threshold
+                    "fetch_k": 5  # Fetch 5 documents first, then filter by score
                 }
             )
 
@@ -231,16 +264,21 @@ class RAGSystem:
             result = response["result"]
             source_documents = response.get("source_documents", [])
             
-            # Extract unique source document names
-            cited_sources = set()
-            for doc in source_documents:
-                if "source" in doc.metadata:
-                    cited_sources.add(doc.metadata["source"])
-            
-            # Add source citations to the response
-            if cited_sources:
-                sources_text = ", ".join(sorted(list(cited_sources)))
-                result += f"\n\nSource: {sources_text}"
+            # Check if we actually got any source documents (based on threshold filter)
+            if source_documents:
+                # Extract unique source document names
+                cited_sources = set()
+                for doc in source_documents:
+                    if "source" in doc.metadata:
+                        cited_sources.add(doc.metadata["source"])
+                
+                # Add source citations to the response
+                if cited_sources:
+                    sources_text = ", ".join(sorted(list(cited_sources)))
+                    result += f"\n\nSource: {sources_text}"
+            else:
+                # No relevant sources were found above the threshold
+                result += "\n\nNo sources available."
             
             return result
 
